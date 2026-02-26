@@ -61,6 +61,14 @@ main:
 biosstr	db	'8086tiny BIOS Revision 1.61!', 0, 0		; Why not?
 mem_top	db	0xea, 0, 0x01, 0, 0xf0, '03/08/14', 0, 0xfe, 0
 
+align 16
+cols db 80, 0
+rows db 25, 0
+cxr dw 0
+cols_minus1 db 0, 0
+rows_minus1 db 0, 0
+align 16
+
 bios_entry:
 
 	; Set up initial stack to F000:F000
@@ -72,6 +80,20 @@ bios_entry:
 	pop	es
 
 	push	ax
+
+	mov ax, [cs:rows]
+	dec ax
+	mov [cs:rows_minus1], ax
+	mov [cs:vid_rows_minus1], ax
+	
+	mov ax, [cs:cols]
+	mov [cs:vid_cols], ax
+	dec ax
+	mov [cs:cols_minus1], ax
+
+	mov	al, [cs:rows]
+	mul	[cs:cols]
+	mov	[cs:cxr], ax	; cols x rows
 
 	; The emulator requires a few control registers in memory to always be zero for correct
 	; instruction decoding (in particular, register look-up operations). These are the
@@ -266,7 +288,7 @@ boot:	mov	ax, 0
 	mov	ax, 0xb800
 	mov	es, ax
 	mov	di, 0
-	mov	cx, 80*25
+	mov	cx, [cs:cxr]
 	mov	ax, 0x0700
 	rep	stosw
 
@@ -275,7 +297,7 @@ boot:	mov	ax, 0
 	mov	ax, 0xc800
 	mov	es, ax
 	mov	di, 0
-	mov	cx, 80*25
+	mov	cx, [cs:cxr]
 	mov	ax, 0x0700
 	rep	stosw
 
@@ -1199,7 +1221,7 @@ int10:
 	mov	[curpos_x-bios_data], dl
 	mov	[crt_curpos_x-bios_data], dl
 
-	cmp	dh, 24
+	cmp	dh, [cs:rows_minus1]
 	jbe	skip_set_cur_row_max
 
 	; If cursor is moved off the screen, then hide it
@@ -1208,7 +1230,7 @@ int10:
 	
     skip_set_cur_row_max:
 
-     	cmp	dl, 79
+     	cmp	dl, [cs:cols_minus1]
 	jbe	skip_set_cur_col_max
 
 	; If cursor is moved off the screen, then hide it
@@ -1309,7 +1331,7 @@ int10:
 	cmp	bl, 0		; Clear whole window?
 	jne	cls_partial_up_whole
 
-	mov	bl, 25		; 25 rows
+	mov	bl, [cs:rows]		; 25 rows
 
   cls_partial_up_whole:
 
@@ -1324,7 +1346,7 @@ int10:
 
     cls_maybe_fs:
 
-	cmp	dh, 24		; End row 25? Full screen for sure
+	cmp	dh, [cs:rows_minus1]	; End row 25? Full screen for sure
 	je	cls_fs
 
     cls_not_fs:
@@ -1426,7 +1448,7 @@ int10_scroll_up_vmem_update:
 
 	mov	ax, 0
 	mov	al, ch		; Start row number is now in AX
-	mov	bx, 80
+	mov	bx, [cs:cols]
 	mul	bx
 	add	al, cl
 	adc	ah, 0		; Character number is now in AX
@@ -1438,7 +1460,8 @@ int10_scroll_up_vmem_update:
 
 	mov	di, ax
 	mov	si, ax
-	add	si, 2*80	; In a moment we will copy CX words from DS:SI to ES:DI
+	add	si, [cs:cols]
+	add	si, [cs:cols]	; In a moment we will copy CX words from DS:SI to ES:DI
 
 	mov	ax, 0
 	add	al, dl
@@ -1551,7 +1574,7 @@ vmem_scroll_up_copy_next_row:
 	cmp	bl, 0		; Clear whole window?
 	jne	cls_partial_down_whole
 
-	mov	bl, 25		; 25 rows
+	mov	bl, [cs:rows]		; 25 rows
 
   cls_partial_down_whole:
 
@@ -1566,7 +1589,7 @@ vmem_scroll_up_copy_next_row:
 
     cls_maybe_fs_down:
 
-	cmp	dh, 24		; End row 25? Full screen for sure
+	cmp	dh, [cs:rows_minus1]	; End row 25? Full screen for sure
 	je	cls_fs_down
 
     cls_not_fs_down:
@@ -1668,7 +1691,7 @@ int10_scroll_down_vmem_update:
 
 	mov	ax, 0
 	mov	al, dh		; End row number is now in AX
-	mov	bx, 80
+	mov	bx, [cs:cols]
 	mul	bx
 	add	al, cl
 	adc	ah, 0		; Character number is now in AX
@@ -1680,7 +1703,8 @@ int10_scroll_down_vmem_update:
 
 	mov	di, ax
 	mov	si, ax
-	sub	si, 2*80	; In a moment we will copy CX words from DS:SI to ES:DI
+	sub	si, [cs:cols]
+	sub	si, [cs:cols]	; In a moment we will copy CX words from DS:SI to ES:DI
 
 	mov	ax, 0
 	add	al, dl
@@ -1752,7 +1776,8 @@ int10_scroll_down_vmem_update:
 	mov	bx, 0xc000
 	mov	ds, bx
 
-	mov	bx, 160
+	mov	bx, [cs:cols]
+	shl	bx, 1
 	mov	ax, 0
 	mov	al, [es:curpos_y-bios_data]
 	mul	bx
@@ -1802,7 +1827,8 @@ int10_scroll_down_vmem_update:
 	mov	bx, 0xc000
 	mov	ds, bx
 
-	mov	bx, 160
+	mov	bx, [cs:cols]
+	shl	bx, 1
 	mov	ax, 0
 	mov	al, [es:curpos_y-bios_data]
 	mul	bx
@@ -1847,7 +1873,8 @@ int10_scroll_down_vmem_update:
 	mov	bx, 0xc000
 	mov	ds, bx
 
-	mov	bx, 160
+	mov	bx, [cs:cols]
+	shl	bx, 1
 	mov	ax, 0
 	mov	al, [es:curpos_y-bios_data]
 	mul	bx
@@ -1962,7 +1989,8 @@ cpu	8086
 
 	inc	byte [curpos_x-bios_data]
 	inc	byte [crt_curpos_x-bios_data]
-	cmp	byte [curpos_x-bios_data], 80
+	mov al, [cs:cols]
+	cmp	byte [curpos_x-bios_data], al
 	jge	int10_write_char_attrib_newline
 	jmp	int10_write_char_attrib_done
 
@@ -1973,10 +2001,12 @@ cpu	8086
 	inc	byte [curpos_y-bios_data]
 	inc	byte [crt_curpos_y-bios_data]
 
-	cmp	byte [curpos_y-bios_data], 25
+	mov al, [cs:rows]
+	cmp	byte [curpos_y-bios_data], al
 	jb	int10_write_char_attrib_done
-	mov	byte [curpos_y-bios_data], 24
-	mov	byte [crt_curpos_y-bios_data], 24
+	mov	al, [cs:rows_minus1]
+	mov	byte [curpos_y-bios_data], al
+	mov	byte [crt_curpos_y-bios_data], al
 
 	mov	bh, 7
 	mov	al, 1
@@ -2006,7 +2036,7 @@ cpu	8086
 	mov	ax, 0x40
 	mov	es, ax
 
-	mov	ah, 80 ; Number of columns
+	mov	ah, [cs:cols] ; Number of columns
 	mov	al, [es:vidmode-bios_data]
 	mov	bh, 0
 
@@ -3095,21 +3125,21 @@ clear_screen:
 	mov	di, 0
 	mov	al, 0
 	mov	ah, bh
-	mov	cx, 80*25
+	mov	cx, [cs:cxr]
 	rep	stosw
 
 	cld
 	mov	di, 0xc800
 	mov	es, di
 	mov	di, 0
-	mov	cx, 80*25
+	mov	cx, [cs:cxr]
 	rep	stosw
 
 	cld
 	mov	di, 0xc000
 	mov	es, di
 	mov	di, 0
-	mov	cx, 80*25
+	mov	cx, [cs:cxr]
 	rep	stosw
 
 	pop	cx
@@ -3297,7 +3327,7 @@ dont_hide_cursor:
 	; position, this initial position is actually off the screen
 
 	mov	bp, -1		; Row number
-	mov	si, 79		; Column number
+	mov	si, [cs:cols_minus1]		; Column number
 
 disp_loop:
 
@@ -3305,7 +3335,7 @@ disp_loop:
 
 	add	di, 2
 	inc	si
-	cmp	si, 80
+	cmp	si, [cs:cols]
 	jne	cont
 
 	; Column is 80, so set to 0 and advance a line
@@ -3317,7 +3347,7 @@ loop_next_line:
 
 	; Bottom of the screen reached already? If so, we're done
 
-	cmp	bp, 25
+	cmp	bp, [cs:rows]
 	je	restore_attrib
 
 	; See if this line has changed in video RAM
@@ -3341,7 +3371,7 @@ loop_next_line:
 	sub	di, [es:vmem_offset-bios_data]
 	pop	es
 
-	mov	cx, 80 ; One row's worth of characters
+	mov	cx, [cs:cols] ; One row's worth of characters
 
 	cld
 	repz	cmpsw
@@ -3366,7 +3396,7 @@ vmem_copy_buf:
 	sub	di, [es:vmem_offset-bios_data]
 	pop	es
 
-	mov	cx, 80 ; One row's worth of characters
+	mov	cx, [cs:cols] ; One row's worth of characters
 	cld
 	rep	movsw
 
@@ -3376,7 +3406,7 @@ vmem_copy_buf:
 
 	; We want to start the update at the first character which differs - so calculate its position.
 
-	mov	bx, 79
+	mov	bx, [cs:cols_minus1]
 	sub	bx, cx
 
 	add	di, bx
@@ -3390,7 +3420,8 @@ vmem_copy_buf:
 
 vmem_next_line:
 
-	add	di, 160
+	add	di, [cs:cols] 
+	add	di, [cs:cols] ; Skip to next line in video RAM
 	jmp	loop_next_line ; Line is unchanged in video RAM
 
 cont:
@@ -3524,9 +3555,9 @@ restore_cursor:
 	mov	[cs:crt_curpos_y_last], bh
 	mov	[cs:crt_curpos_x_last], bl
 		
-	cmp	bh, 24
+	cmp	bh, [cs:rows_minus1]
 	ja	vmem_end_hidden_cursor
-	cmp	bl, 79
+	cmp	bl, [cs:cols_minus1]
 	ja	vmem_end_hidden_cursor
 
 	mov	al, 0x1B	; ANSI
@@ -3634,7 +3665,7 @@ motorshutoff	db	0x07
 disk_laststatus	db	0
 times 7		db	0
 vidmode		db	0x03
-vid_cols	dw	80
+vid_cols	dw	0
 page_size	dw	0x1000
 		dw	0
 curpos_x	db	0
@@ -3659,7 +3690,7 @@ num_hd		db	0
 		dd	0
 kbbuf_start_ptr	dw	0x001e
 kbbuf_end_ptr	dw	0x003e
-vid_rows	db	25         ; at 40:84
+vid_rows_minus1	db	0         ; at 40:84
 		db	0
 		db	0
 vidmode_opt	db	0 ; 0x70
