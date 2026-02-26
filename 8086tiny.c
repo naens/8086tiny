@@ -11,6 +11,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 
 
 // Emulator system constants
@@ -227,6 +228,23 @@ int AAA_AAS(char which_operation)
 // Emulator entry point
 int main(int argc, char **argv)
 {
+	struct winsize w = {0};
+
+	if (!ioctl(STDOUT_FILENO, TIOCGWINSZ, &w))
+	{
+		cols = w.ws_col;
+		rows = w.ws_row;
+	}
+
+	if (cols < 1)
+		cols = 80;
+	else if (cols > 255)
+		cols = 255;
+
+	if (rows < 1)
+		rows = 25;
+	else if (rows > 255)
+		rows = 255;
 
 	// regs16 and reg8 point to F000:0, the start of memory-mapped registers. CS is initialised to F000
 	regs16 = (unsigned short *)(regs8 = mem + REGS_BASE);
