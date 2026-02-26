@@ -402,178 +402,6 @@ int7:	; Whenever the user presses a key, INT 7 is called by the emulator.
 	mov	ax, [es:this_keystroke-bios_data]
 	mov	byte [es:this_keystroke+1-bios_data], 0
 
-  real_key:
-
-	mov	byte [cs:last_key_sdl], 0
-
-	test	ah, 4 ; This key doesn't come from SDL
-	jz	check_linux_bksp
-
-	mov	byte [es:keyflags1-bios_data], 0
-	mov	byte [es:keyflags2-bios_data], 0
-
-	mov	byte [cs:last_key_sdl], 1 ; Key down from SDL
-
-	test	ah, 0x40 ; Key up
-	jz	sdl_check_specials
-
-	mov	byte [cs:last_key_sdl], 2 ; Key up from SDL
-
-  sdl_check_specials:
-
-	mov	bx, ax
-	and	bh, 7 ; If key is between 52F and 534 (Shift/Ctrl/Alt), ignore the key state flags
-	cmp	bx, 0x52f
-	je	sdl_just_press_shift
-	cmp	bx, 0x530
-	je	sdl_just_press_shift
-	cmp	bx, 0x533
-	je	sdl_just_press_alt
-	cmp	bx, 0x534
-	je	sdl_just_press_alt
-	cmp	bx, 0x531
-	je	sdl_just_press_ctrl
-	cmp	bx, 0x532
-	je	sdl_just_press_ctrl
-	jmp	sdl_check_alt
-
-  sdl_just_press_shift:
-
-	mov	al, 0x36 ; Shift
-	and	ah, 0x40 ; Key up?
-	add	al, ah
-	add	al, ah
-	call	io_key_available
-	jmp	i2_dne
-
-  sdl_just_press_alt:
-
-	mov	al, 0x38 ; Alt
-	and	ah, 0x40 ; Key up?
-	add	al, ah
-	add	al, ah
-	call	io_key_available
-	jmp	i2_dne
-
-  sdl_just_press_ctrl:
-
-	mov	al, 0x1d ; Ctrl
-	and	ah, 0x40 ; Key up?
-	add	al, ah
-	add	al, ah
-	call	io_key_available
-	jmp	i2_dne
-
-  sdl_check_alt:
-
-	test	ah, 8 ; Alt+something?
-	jz	sdl_no_alt
-	add	byte [es:keyflags1-bios_data], 8
-	add	byte [es:keyflags2-bios_data], 2
-
-  sdl_no_alt:
-
-	test	ah, 0x20 ; Ctrl+something?
-	jz	sdl_no_ctrl
-	add	byte [es:keyflags1-bios_data], 4
-
-  sdl_no_ctrl:
-
-	test	ah, 0x10 ; Shift+something?
-	jz	sdl_no_mods
-	add	byte [es:keyflags1-bios_data], 1
-
-  sdl_no_mods:
-
-	and	ah, 1 ; We have processed all SDL modifiers, so remove them
-
-	;cmp	ax, 160 ; Alt+Space?
-	;jne	next_sdl_alt_keys
-	;mov	al, ' '
-	;mov	byte [es:this_keystroke-bios_data], al
-
-  check_sdl_f_keys:
-
-	cmp	ax, 0x125
-	ja	i2_dne ; Unknown key
-
-	cmp	ax, 0x11a
-	jb	check_sdl_pgup_pgdn_keys
-
-	sub	ax, 0xdf ; F1 - F10
-	cmp	ax, 0x45
-	jb	check_sdl_f_keys2
-	add	ax, 0x12 ; F11 - F12
-
-  check_sdl_f_keys2:
-
-	mov	bh, al
-	mov	al, 0
-	jmp	sdl_scancode_xlat_done
-
-  check_sdl_pgup_pgdn_keys:
-
-	cmp	ax, 0x116
-	jb	check_sdl_cursor_keys
-	cmp	ax, 0x119
-	ja	check_sdl_cursor_keys
-
-	sub	ax, 0x116
-	mov	bx, pgup_pgdn_xlt
-	cs	xlat
-
-	mov	bh, al
-	mov	al, 0
-	jmp	sdl_scancode_xlat_done
-
-  check_sdl_cursor_keys:
-
-	cmp	ax, 0x111 ; SDL cursor keys
-	jb	sdl_process_key ; No special handling for other keys yet
-	
-	sub	ax, 0x111
-	mov	bx, unix_cursor_xlt
-	xlat	; Convert SDL cursor keys to scancode
-
-	mov	bh, al
-	mov	al, 0
-	mov	byte [es:this_keystroke-bios_data], 0
-	jmp	sdl_scancode_xlat_done
-
-  sdl_process_key:
-
-	cmp	ax, 0x100
-	jae	i2_dne ; Unsupported key
-	cmp	al, 0x7f ; SDL 0x7F backspace? Convert to 0x08
-	jne	sdl_process_key2
-	mov	al, 8
-
-  sdl_process_key2:
-
-	push	ax
-	mov	bx, a2scan_tbl ; ASCII to scancode table
-	xlat
-	mov	bh, al
-	pop	ax ; Scancode in BH, keycode in AL
-
-  sdl_scancode_xlat_done:
-
-	add	bh, 0x80 ; Key up scancode
-	cmp	byte [cs:last_key_sdl], 2 ; Key up?
-	je	sdl_not_in_buf
-
-	sub	bh, 0x80 ; Key down scancode
-
-  sdl_key_down:
-
-	mov	[es:this_keystroke-bios_data], al
-		
-  sdl_not_in_buf:
-
-	mov	al, bh
-	call	io_key_available
-	jmp	i2_dne	
-
   check_linux_bksp:
 
 	cmp	al, 0 ; Null keystroke - ignore
@@ -954,10 +782,6 @@ inta_call_int8:
 	mov	[cs:last_int8_msec], ax
 
 skip_timer_increment:
-
-	; If last key was from SDL, don't simulate key up events (SDL will do it for us)
-	cmp	byte [cs:last_key_sdl], 0
-	jne	i8_end
 
 	; See if we have any keys down. If so, release them
 	cmp	byte [es:key_now_down-bios_data], 0
@@ -3811,13 +3635,9 @@ colour_table	db	30, 34, 32, 36, 31, 35, 33, 37
 
 low_ascii_conv	db	' ', 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, '><|!|$', 250, '|^v><--^v'
 
-; Conversion from UNIX cursor keys/SDL keycodes to scancodes
+; Conversion from UNIX cursor keys to scancodes
 
 unix_cursor_xlt	db	0x48, 0x50, 0x4d, 0x4b
-
-; Conversion from SDL keycodes to Home/End/PgUp/PgDn scancodes
-
-pgup_pgdn_xlt	db	0x47, 0x4f, 0x49, 0x51
 
 ; Internal variables for VMEM driver
 
@@ -3833,7 +3653,6 @@ crt_curpos_y_last	db	0
 ; INT 8 millisecond counter
 
 last_int8_msec	dw	0
-last_key_sdl	db 	0
 
 ; Now follow the tables for instruction decode helping
 
