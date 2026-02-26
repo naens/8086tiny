@@ -230,6 +230,7 @@ int main(int argc, char **argv)
 {
 	struct winsize w = {0};
 
+	// Try to initialize text dimensions from the host terminal size.
 	if (!ioctl(STDOUT_FILENO, TIOCGWINSZ, &w))
 	{
 		cols = w.ws_col;
@@ -246,7 +247,7 @@ int main(int argc, char **argv)
 	else if (rows > 255)
 		rows = 255;
 
-	// regs16 and reg8 point to F000:0, the start of memory-mapped registers. CS is initialised to F000
+	// regs16 and regs8 point to F000:0, the start of memory-mapped registers. CS is initialised to F000
 	regs16 = (unsigned short *)(regs8 = mem + REGS_BASE);
 	regs16[REG_CS] = 0xF000;
 

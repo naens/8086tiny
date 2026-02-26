@@ -8,8 +8,7 @@
 	cpu	8086
 
 ; Here we define macros for some custom instructions that help the emulator talk with the outside
-; world. They are described in detail in the hint.html file, which forms part of the emulator
-; distribution.
+; world. They are described in detail in the project documentation.
 
 %macro	extended_putchar_al 0
 	db	0x0f, 0x00
@@ -58,7 +57,7 @@ main:
 
 ; These values (BIOS ID string, BIOS date and so forth) go at the very top of memory
 
-biosstr	db	'8086tiny BIOS Revision 1.61!', 0, 0		; Why not?
+biosstr	db	'8086tiny BIOS Revision 1.61!', 0, 0
 mem_top	db	0xea, 0, 0x01, 0, 0xf0, '03/08/14', 0, 0xfe, 0
 
 align 16
@@ -811,14 +810,6 @@ i8_stuff_esc:
 	mov	byte [es:escape_flag-bios_data], 0
 	mov	byte [es:escape_flag_last-bios_data], 0
 
-	; mov	bp, [es:kbbuf_tail-bios_data]
-	; mov	byte [es:bp], 0x1b ; ESC ASCII code
-	; mov	byte [es:bp+1], 0x01 ; ESC scan code
-
-	; ESC keystroke is in the buffer now
-	; add	word [es:kbbuf_tail-bios_data], 2
-	; call	kb_adjust_buf ; Wrap the tail around the head if the buffer gets too large
-
 	mov	byte [es:this_keystroke-bios_data], 0x1b
 
 	; Push out ESC keypress/release
@@ -877,8 +868,6 @@ int10:
 	je	int10_write_char
 	cmp	ah, 0x0f ; Get video mode
 	je	int10_get_vm
-	; cmp	ah, 0x1a ; Feature check
-	; je	int10_features
 
 	iret
 
@@ -1137,10 +1126,10 @@ int10:
 	cmp	cx, 0 ; Start of screen
 	jne	cls_partial
 
-	cmp	dl, 0x4f ; Clearing columns 0-79
+	cmp	dl, [cs:cols_minus1]
 	jb	cls_partial
 
-	cmp	dh, 0x18 ; Clearing rows 0-24 (or more)
+	cmp	dh, [cs:rows_minus1]
 	jb	cls_partial
 
 	call	clear_screen
@@ -1155,7 +1144,7 @@ int10:
 	cmp	bl, 0		; Clear whole window?
 	jne	cls_partial_up_whole
 
-	mov	bl, [cs:rows]		; 25 rows
+	mov	bl, [cs:rows]		; Row count
 
   cls_partial_up_whole:
 
@@ -1170,7 +1159,7 @@ int10:
 
     cls_maybe_fs:
 
-	cmp	dh, [cs:rows_minus1]	; End row 25? Full screen for sure
+	cmp	dh, [cs:rows_minus1]	; End row is the last row? Full screen for sure
 	je	cls_fs
 
     cls_not_fs:
@@ -1323,15 +1312,6 @@ vmem_scroll_up_copy_next_row:
 
     cls_vmem_scroll_up_done:
 
-	;mov	al, 0x1B	; Escape
-	;extended_putchar_al
-	;mov	al, '['		; ANSI
-	;extended_putchar_al
-	;mov	al, '0'		; Reset attributes
-	;extended_putchar_al
-	;mov	al, 'm'
-	;extended_putchar_al
-
 	pop	di
 	pop	si
 	pop	dx
@@ -1378,10 +1358,10 @@ vmem_scroll_up_copy_next_row:
 	cmp	cx, 0 ; Start of screen
 	jne	cls_partial_down
 
-	cmp	dl, 0x4f ; Clearing columns 0-79
+	cmp	dl, [cs:cols_minus1]
 	jne	cls_partial_down
 
-	cmp	dh, 0x18 ; Clearing rows 0-24 (or more)
+	cmp	dh, [cs:rows_minus1]
 	jl	cls_partial_down
 
 	call	clear_screen
@@ -1398,7 +1378,7 @@ vmem_scroll_up_copy_next_row:
 	cmp	bl, 0		; Clear whole window?
 	jne	cls_partial_down_whole
 
-	mov	bl, [cs:rows]		; 25 rows
+	mov	bl, [cs:rows]		; Row count
 
   cls_partial_down_whole:
 
@@ -1413,7 +1393,7 @@ vmem_scroll_up_copy_next_row:
 
     cls_maybe_fs_down:
 
-	cmp	dh, [cs:rows_minus1]	; End row 25? Full screen for sure
+	cmp	dh, [cs:rows_minus1]	; End row is the last row? Full screen for sure
 	je	cls_fs_down
 
     cls_not_fs_down:
@@ -1568,15 +1548,6 @@ int10_scroll_down_vmem_update:
 	pop	cx
 	pop	es
 	pop	ds
-
-	;mov	al, 0x1B	; Escape
-	;extended_putchar_al
-	;mov	al, '['		; ANSI
-	;extended_putchar_al
-	;mov	al, '0'		; Reset attributes
-	;extended_putchar_al
-	;mov	al, 'm'
-	;extended_putchar_al
 
 	pop	bx
 	pop	ax
@@ -1748,8 +1719,6 @@ cpu	8086
 	mov	bl, byte [cs:bp+colour_table]
 
 	add	bl, 10
-	; rol	bh, 1
-	; and	bh, 1		; Bright attribute now in bh (not used right now)
 
 	mov	al, ';'
 	extended_putchar_al
@@ -1867,15 +1836,6 @@ cpu	8086
 	pop	es
 
 	iret
-
-  int10_features:
-
-	; Signify we have CGA display
-
-	; mov	al, 0x1a
-	; mov	bx, 0x0202
-	; iret
-
 ; ************************* INT 11h - get equipment list
 
 int11:	
@@ -2015,8 +1975,6 @@ int13:
 
 	mov	al, [es:bx+24]	; Number of SPT in floppy disk BPB
 
-	; cmp	al, 0		; If disk is unformatted, do not update the table
-	; jne	rd_update_spt
 	cmp	al, 9		; 9 SPT, i.e. 720K disk, so update the table
 	je	rd_update_spt
 	cmp	al, 18
@@ -2252,48 +2210,11 @@ int14:
 
 ; ************************* INT 15h - get system configuration
 
-int15:	; Here we do not support any of the functions, and just return
-	; a function not supported code - like the original IBM PC/XT does.
-
-	; cmp	ah, 0xc0
-	; je	int15_sysconfig
-	; cmp	ah, 0x41
-	; je	int15_waitevent
-	; cmp	ah, 0x4f
-	; je	int15_intercept
-	; cmp	ah, 0x88
-	; je	int15_getextmem
-
-; Otherwise, function not supported
+int15:	; Functions are not supported, matching IBM PC/XT behaviour.
 
 	mov	ah, 0x86
 
 	jmp	reach_stack_stc
-
-;  int15_sysconfig: ; Return address of system configuration table in ROM
-;
-;	mov	bx, 0xf000
-;	mov	es, bx
-;	mov	bx, rom_config
-;	mov	ah, 0
-;
-;	jmp	reach_stack_clc
-;
-;  int15_waitevent: ; Events not supported
-;
-;	mov	ah, 0x86
-;
-;	jmp	reach_stack_stc
-;
-;  int15_intercept: ; Keyboard intercept
-;
-;	jmp	reach_stack_stc
-;
-;  int15_getextmem: ; Extended memory not supported
-;
-;	mov	ah,0x86
-;
-;	jmp	reach_stack_stc
 
 ; ************************* INT 16h handler - keyboard
 
@@ -3041,7 +2962,7 @@ reach_stack_carry:
 	jc	reach_stack_stc
 	jmp	reach_stack_clc
 
-; This is the VMEM driver, to support direct video memory access in 80x25 colour CGA mode.
+; This is the VMEM driver, to support direct video memory access in text mode.
 ; It scans through CGA video memory at address B800:0, and if there is anything there (i.e.
 ; applications are doing direct video memory writes), converts the buffer to a sequence of
 ; ANSI terminal codes to render the screen output.
