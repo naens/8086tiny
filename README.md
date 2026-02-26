@@ -8,3 +8,17 @@
 The philosophy of 8086tiny is to keep the code base as small as possible, and through the open source license encourage individual developers to tune and extend it as per their specific requirements, adding support, for example, for more complex instruction sets (e.g. Pentium) or peripherals (e.g. mouse). Forking this repository is highly encouraged!
 
 Any questions, comments or suggestions are very welcome in our forum at 8086tiny.freeforums.net.
+
+Documentation is available in `docs/doc.md`.
+
+## Documentation
+
+Quick links:
+
+- [Current fork status](docs/doc.md#current-fork-status)
+- [Emulated machine profile](docs/doc.md#emulated-machine-profile)
+- [Build](docs/doc.md#build)
+- [Run](docs/doc.md#run)
+- [Keyboard behavior (text mode)](docs/doc.md#keyboard-behavior-text-mode)
+- [Text mode and terminal behavior](docs/doc.md#text-mode-and-terminal-behavior)
+- [Disk image notes](docs/doc.md#disk-image-notes)
