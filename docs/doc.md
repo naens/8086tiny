@@ -5,7 +5,7 @@
 ## Current fork status
 
 - SDL-specific keyboard paths were removed from BIOS keyboard handling.
-- Build is SDL-free (`make` builds `bios` and `8086tiny`).
+- Build is SDL-free (`make` builds `bios.bin` and `8086tiny`).
 - Text dimensions are runtime-driven rather than fixed `80x25`.
 
 At startup, `8086tiny` reads terminal size using `ioctl(TIOCGWINSZ)` and uses:
@@ -37,7 +37,7 @@ make
 
 Build outputs:
 
-- `bios` (from `bios.asm`)
+- `bios.bin` (from `bios.asm`)
 - `8086tiny` (from `8086tiny.c`)
 
 Clean:
@@ -49,26 +49,11 @@ make clean
 ## Run
 
 ```sh
-./8086tiny bios fd.img [@]hd.img
+./8086tiny bios.bin fd.img [@]hd.img
 ```
 
 - Prefix hard disk image with `@` to boot from hard disk.
-- The provided `runme` script sets raw terminal mode before launch.
-
-Example `runme` flow:
-
-```sh
-#!/bin/sh
-clear
-stty cbreak raw -echo min 0
-if [ -f hd.img ]
-then
-    ./8086tiny bios fd.img hd.img
-else
-    ./8086tiny bios fd.img
-fi
-stty cooked echo
-```
+- Terminal mode is configured by `8086tiny` at startup; no wrapper script is required.
 
 ## Keyboard behavior (text mode)
 

@@ -5,6 +5,8 @@
 //
 // This work is licensed under the MIT License. See included LICENSE.TXT.
 
+#define _DEFAULT_SOURCE
+
 #include <time.h>
 #include <sys/timeb.h>
 #include <memory.h>
@@ -12,6 +14,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <stdio.h>
+#include <termios.h>
 
 
 // Emulator system constants
@@ -246,6 +250,23 @@ int main(int argc, char **argv)
 		rows = 25;
 	else if (rows > 255)
 		rows = 255;
+
+	printf("\033[H\033[J");		// Clear screen.
+	struct termios saved, raw;
+	int termios_configured = 0;
+	if (tcgetattr(STDIN_FILENO, &saved) == 0)
+	{
+		raw = saved;
+		cfmakeraw(&raw);
+		raw.c_cc[VMIN] = 0;  // min characters to read
+		raw.c_cc[VTIME] = 0; // timeout in tenths of a second
+		if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0)
+			termios_configured = 1;
+		else
+			perror("Warning: could not set raw terminal mode");
+	}
+	else
+		perror("Warning: could not read terminal attributes");
 
 	// regs16 and regs8 point to F000:0, the start of memory-mapped registers. CS is initialised to F000
 	regs16 = (unsigned short *)(regs8 = mem + REGS_BASE);
@@ -690,5 +711,9 @@ int main(int argc, char **argv)
 		if (int8_asap && !seg_override_en && !rep_override_en && regs8[FLAG_IF] && !regs8[FLAG_TF])
 			pc_interrupt(0xA), int8_asap = 0, KEYBOARD_DRIVER;
 	}
+
+	if (termios_configured)
+		tcsetattr(STDIN_FILENO, TCSANOW, &saved); // Restore terminal settings
+	printf("\033[H\033[J");		// Clear screen.
 	return 0;
 }
