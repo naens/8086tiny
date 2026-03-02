@@ -3006,7 +3006,7 @@ vram_zero_check:			; Check if video memory is blank - if so, do nothing
 
 	mov	bx, 0xb800
 	mov	es, bx
-	mov	cx, 0x7d0
+	mov	cx, [cs:cxr]
 	mov	ax, 0x0700
 
 	cld
@@ -3020,7 +3020,7 @@ vram_zero_check:			; Check if video memory is blank - if so, do nothing
 	mov	bx, 0xc800
 	mov	ds, bx
 	mov	si, 0
-	mov	cx, 0x7d0
+	mov	cx, [cs:cxr]
 
 	cld
 	repz	cmpsw
