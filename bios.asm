@@ -759,7 +759,23 @@ inta:
 
   no_adjust_10000:
 
+	; Guard against divide overflow if long VMEM updates caused a large elapsed
+	; interval and PIT divisor is small.
+	cmp	dx, bx
+	jb	inta_div_ok
+	mov	ax, 0xffff
+	xor	dx, dx
+	jmp	inta_div_done
+
+  inta_div_ok:
 	div	bx ; AX now contains number of timer ticks since last int 8 (DX is remainder)
+
+  inta_div_done:
+	cmp	ax, 32		; bound catch-up work per call to keep system responsive
+	jbe	inta_div_capped
+	mov	ax, 32
+
+  inta_div_capped:
 
 	cmp	ax, 0
 	je	i8_end
@@ -1362,7 +1378,7 @@ vmem_scroll_up_copy_next_row:
 	jne	cls_partial_down
 
 	cmp	dh, [cs:rows_minus1]
-	jl	cls_partial_down
+	jb	cls_partial_down
 
 	call	clear_screen
 	iret
@@ -1760,7 +1776,7 @@ cpu	8086
 	dec	byte [curpos_x-bios_data]
 	dec	byte [crt_curpos_x-bios_data]
 	cmp	byte [curpos_x-bios_data], 0
-	jg	int10_write_char_attrib_done
+	ja	int10_write_char_attrib_done
 
 	mov	byte [curpos_x-bios_data], 0
 	mov	byte [crt_curpos_x-bios_data], 0
@@ -1784,7 +1800,7 @@ cpu	8086
 	inc	byte [crt_curpos_x-bios_data]
 	mov al, [cs:cols]
 	cmp	byte [curpos_x-bios_data], al
-	jge	int10_write_char_attrib_newline
+	jae	int10_write_char_attrib_newline
 	jmp	int10_write_char_attrib_done
 
     int10_write_char_attrib_newline:
@@ -1804,7 +1820,8 @@ cpu	8086
 	mov	bh, 7
 	mov	al, 1
 	mov	cx, 0
-	mov	dx, 0x184f
+	mov	dh, [cs:rows_minus1]
+	mov	dl, [cs:cols_minus1]
 
 	pushf
 	push	cs
@@ -2636,26 +2653,50 @@ hex_to_bcd:
 	pop	bx
 	ret
 
-; Takes a number in AL (from 0 to 99), and outputs the value in decimal using extended_putchar_al.
+; Takes a number in AL (from 0 to 255), and outputs the value in decimal using extended_putchar_al.
 
 puts_decimal_al:
 
 	push	ax
-	
-	aam
-	add	ax, 0x3030	; '00'
-	
-	cmp	ah, 0x30
-	je	pda_2nd		; First digit is zero, so print only 2nd digit
+	push	bx
+	push	dx
 
-	xchg	ah, al		; First digit is now in AL
-	extended_putchar_al	; Print first digit
-	xchg	ah, al		; Second digit is now in AL
+	mov	dl, al		; preserve input value
+	xor	ah, ah
+	mov	al, dl
+	mov	bl, 100
+	div	bl		; AL=hundreds (0..2), AH=remainder (0..99)
+	mov	dh, al		; save hundreds digit (binary)
 
-  pda_2nd:
+	mov	al, ah		; remainder 0..99
+	aam			; AH=tens, AL=ones (binary)
+	add	ax, 0x3030	; convert tens/ones to ASCII
+	mov	bl, al		; BL=ones ASCII
+	mov	bh, ah		; BH=tens ASCII
 
-	extended_putchar_al	; Print second digit
+	cmp	dh, 0
+	je	pda_no_hundreds
+	mov	al, dh
+	add	al, '0'
+	extended_putchar_al	; Print hundreds digit
+	mov	al, bh
+	extended_putchar_al	; Print tens digit
+	jmp	pda_ones
 
+  pda_no_hundreds:
+
+	cmp	bh, '0'
+	je	pda_ones	; suppress leading zero in tens place
+	mov	al, bh
+	extended_putchar_al	; Print tens digit
+
+  pda_ones:
+
+	mov	al, bl
+	extended_putchar_al	; Print ones digit
+
+	pop	dx
+	pop	bx
 	pop	ax
 	ret
 
@@ -2976,7 +3017,15 @@ vmem_driver_entry:
 	je	just_finish		; If we are already in the middle of an update, skip. Needed for re-entrancy
 
 	inc	byte [cs:int8_ctr]
-	cmp	byte [cs:int8_ctr], 8	; Only do this once every 8 timer ticks
+	mov	al, [cs:int8_ctr]
+	cmp	word [cs:cxr], 9000	; large geometry: refresh less often
+	jb	vmem_rate_fast
+	cmp	al, 24			; ~3x slower refresh for big screens
+	jb	just_finish
+	jmp	gmode_test
+
+vmem_rate_fast:
+	cmp	al, 8			; default refresh cadence
 	jne	just_finish
 
 gmode_test:
@@ -2995,7 +3044,8 @@ vram_zero_check:			; Check if video memory is blank - if so, do nothing
 	
 	mov	byte [cs:in_update], 1
 
-	sti
+	; Keep interrupts masked during VMEM scan/update to avoid nested INT 8
+	; reentry and stack growth on large geometries.
 
 	mov	bx, 0x40
 	mov	ds, bx
