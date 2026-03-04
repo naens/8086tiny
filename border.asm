@@ -48,11 +48,11 @@ write_char:
 
     inc dx
     cmp dl, cl
-    jl col_loop         ; Now correctly jumps to col_loop
+    jb col_loop         ; unsigned compare for widths >= 128
 
     inc bx
     cmp bl, ch
-    jl row_loop
+    jb row_loop
 
     ; Wait for key before exit so you can see the result
     mov ah, 0x00
