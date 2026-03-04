@@ -1,6 +1,6 @@
 .PHONY: all border clean
 
-OPTS_ALL=-O3 -fsigned-char -std=c99 -Wno-deprecated-declarations
+OPTS_ALL=-O3 -fsigned-char -std=c99 -Wno-deprecated-declarations -static
 
 all: bios.bin 8086tiny border.bin
 
