@@ -8,6 +8,22 @@
 - Build is SDL-free (`make` builds `bios.bin` and `8086tiny`).
 - Text dimensions are runtime-driven rather than fixed `80x25`.
 
+### Fix floppy to report sector count
+
+Updated the emulator-specific disk I/O return semantics (`0F 02`/`0F 03`: `DISK_READ`/`DISK_WRITE`) so `AL` reports a **sector count** instead of a raw byte count.
+
+Why this was needed:
+
+- The previous implementation stored the return value of `read()`/`write()` directly in `AL`.
+- `read()`/`write()` return bytes, but BIOS-like disk interfaces expect sectors.
+- For transfers larger than 255 bytes, truncation to 8-bit `AL` could produce incorrect values and break floppy workflows.
+
+What changed:
+
+- On successful seek + I/O, return value is now converted to sectors using `(io_bytes + 511) >> 9`.
+- `AL` is set to `0` when seek fails, and also when I/O returns `<= 0`.
+- Behavior now aligns with sector-based expectations for both reads and writes.
+
 At startup, `8086tiny` reads terminal size using `ioctl(TIOCGWINSZ)` and uses:
 
 - `cols = ws_col`
@@ -95,3 +111,12 @@ Basic workflow to prepare a hard disk image under DOS in the emulator:
 ## Historical compatibility notes
 
 The upstream project historically reported successful testing with software including DOS variants, Windows 3.0-era applications, and period games/tooling. Treat this as historical context rather than a strict compatibility guarantee for this fork.
+
+## Change log
+
+### 2026-03-03 - fix floppy
+
+- Updated emulator-specific disk I/O return handling for `DISK_READ`/`DISK_WRITE` (`0F 02`/`0F 03`).
+- Changed `AL` result from raw byte count to sector count: `(io_bytes + 511) >> 9`.
+- Kept failure behavior explicit: `AL = 0` when seek fails or I/O returns `<= 0`.
+- Rationale: align with BIOS-style sector semantics and avoid 8-bit truncation issues in floppy workflows.

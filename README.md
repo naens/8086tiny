@@ -16,9 +16,11 @@ Documentation is available in `docs/doc.md`.
 Quick links:
 
 - [Current fork status](docs/doc.md#current-fork-status)
+- [Fix floppy to report sector count](docs/doc.md#fix-floppy-to-report-sector-count)
 - [Emulated machine profile](docs/doc.md#emulated-machine-profile)
 - [Build](docs/doc.md#build)
 - [Run](docs/doc.md#run)
+- [Change log](docs/doc.md#change-log)
 - [Keyboard behavior (text mode)](docs/doc.md#keyboard-behavior-text-mode)
 - [Text mode and terminal behavior](docs/doc.md#text-mode-and-terminal-behavior)
 - [Disk image notes](docs/doc.md#disk-image-notes)
